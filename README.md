@@ -10,7 +10,7 @@
 
 
 ## Usage
-### Here's an example usage of the customtx package:
+### Here's an example usage of the aonTx package:
 
 ```go
 package main

@@ -2,15 +2,28 @@ package aonTx
 
 import (
 	"sync"
+	"time"
 )
 
-type TxFunc func() error
-type RollbackFunc func() error
+type (
+	TxFunc       func() error
+	RollbackFunc func() error
+)
+
+type Transaction interface {
+	AddFunc(txFunc TxFunc, rollbackFunc RollbackFunc)
+	ExecuteFunc(txFunc TxFunc, rollbackFunc RollbackFunc) error
+	Execute() error
+}
 
 type Tx struct {
-	txFuncs        []TxFunc
-	rollbackFuncs  []RollbackFunc
-	async          bool
+	txFuncs       []TxFunc
+	rollbackFuncs []RollbackFunc
+	async         bool
+
+	retries bool
+	RetryOptions
+
 	lock           sync.Mutex
 	completedCount int
 	completedErr   error
@@ -21,10 +34,29 @@ func NewTx(async bool) *Tx {
 		txFuncs:       make([]TxFunc, 0),
 		rollbackFuncs: make([]RollbackFunc, 0),
 		async:         async,
+		retries:       false,
+		RetryOptions: RetryOptions{
+			MaxRetries: 3,
+			Backoff: &ExponentialBackoff{
+				InitialInterval: 1 * time.Second,
+				MaxInterval:     30 * time.Second,
+				Multiplier:      2,
+				RandomFactor:    0.2,
+			},
+		},
 	}
 }
 
-func (t *Tx) AddFunc(txFunc TxFunc, rollbackFunc RollbackFunc) {
+func (t *Tx) AppendUnrecoverableErrors(errs ...error) {
+	if t.UnrecoverableErrors != nil {
+		t.UnrecoverableErrors = append(t.UnrecoverableErrors, errs...)
+		return
+	}
+
+	t.UnrecoverableErrors = errs
+}
+
+func (t *Tx) AppendFunc(txFunc TxFunc, rollbackFunc RollbackFunc) {
 	t.txFuncs = append(t.txFuncs, txFunc)
 	t.rollbackFuncs = append(t.rollbackFuncs, rollbackFunc)
 }
@@ -35,9 +67,15 @@ func (t *Tx) ExecuteFunc(txFunc TxFunc, rollbackFunc RollbackFunc) error {
 
 	t.completedErr = nil
 
-	err := txFunc()
+	var err error
+	if t.retries {
+		err = Retry(txFunc, t.RetryOptions)
+	} else {
+		err = txFunc()
+	}
+
 	if err != nil {
-		t.AddFunc(func() error { return nil }, rollbackFunc)
+		t.AppendFunc(func() error { return nil }, rollbackFunc)
 	}
 	t.handleCompletion(err)
 	if t.completedErr != nil {
@@ -58,11 +96,21 @@ func (t *Tx) Execute() error {
 		txF := txFunc
 		if t.async {
 			go func(txF TxFunc) {
-				err := txF()
+				var err error
+				if t.retries {
+					err = Retry(txF, t.RetryOptions)
+				} else {
+					err = txF()
+				}
 				t.handleCompletion(err)
 			}(txF)
 		} else {
-			err := txF()
+			var err error
+			if t.retries {
+				err = Retry(txF, t.RetryOptions)
+			} else {
+				err = txF()
+			}
 			t.handleCompletion(err)
 		}
 
@@ -75,7 +123,6 @@ func (t *Tx) Execute() error {
 }
 
 func (t *Tx) handleCompletion(err error) {
-
 	if err != nil {
 		t.completedErr = err
 	}
@@ -88,7 +135,6 @@ func (t *Tx) handleCompletion(err error) {
 }
 
 func (t *Tx) rollback() {
-
 	for i := t.completedCount - 1; i >= 0; i-- {
 		rollbackFunc := t.rollbackFuncs[i]
 		err := rollbackFunc()
