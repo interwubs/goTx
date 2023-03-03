@@ -17,8 +17,8 @@ var (
 func TestTx_Execute(t1 *testing.T) {
 	wg := sync.WaitGroup{}
 	type fields struct {
-		txFuncs        []TxFunc
-		rollbackFuncs  []RollbackFunc
+		txFuncs        []UpdateFunc
+		rollbackFuncs  []CompensateFunc
 		async          bool
 		completedCount int
 		completedErr   error
@@ -32,7 +32,7 @@ func TestTx_Execute(t1 *testing.T) {
 		{
 			name: "happypath",
 			fields: fields{
-				txFuncs: []TxFunc{
+				txFuncs: []UpdateFunc{
 					func() error {
 						a += 2
 						fmt.Println("a =", a)
@@ -49,7 +49,7 @@ func TestTx_Execute(t1 *testing.T) {
 						return nil
 					},
 				},
-				rollbackFuncs: []RollbackFunc{
+				rollbackFuncs: []CompensateFunc{
 					func() error {
 						a = 4
 						fmt.Println("ROLLBACK A")
@@ -79,7 +79,7 @@ func TestTx_Execute(t1 *testing.T) {
 		{
 			name: "error-mid",
 			fields: fields{
-				txFuncs: []TxFunc{
+				txFuncs: []UpdateFunc{
 					func() error {
 						a += 2
 						return nil
@@ -94,7 +94,7 @@ func TestTx_Execute(t1 *testing.T) {
 						return nil
 					},
 				},
-				rollbackFuncs: []RollbackFunc{
+				rollbackFuncs: []CompensateFunc{
 					func() error {
 						a = 4
 						return nil
@@ -122,7 +122,7 @@ func TestTx_Execute(t1 *testing.T) {
 		{
 			name: "happypath-async",
 			fields: fields{
-				txFuncs: []TxFunc{
+				txFuncs: []UpdateFunc{
 					func() error {
 						a += 2
 						fmt.Println("a =", a)
@@ -142,7 +142,7 @@ func TestTx_Execute(t1 *testing.T) {
 						return nil
 					},
 				},
-				rollbackFuncs: []RollbackFunc{
+				rollbackFuncs: []CompensateFunc{
 					func() error {
 						a = 4
 						fmt.Println("ROLLBACK A")
@@ -174,7 +174,7 @@ func TestTx_Execute(t1 *testing.T) {
 	for _, tt := range tests {
 		t1.Run(
 			tt.name, func(t1 *testing.T) {
-				t := &Tx{
+				t := &SagaTx{
 					async:          tt.fields.async,
 					lock:           sync.Mutex{},
 					completedCount: tt.fields.completedCount,
@@ -189,7 +189,7 @@ func TestTx_Execute(t1 *testing.T) {
 					t.AppendFunc(txFunc, tt.fields.rollbackFuncs[i])
 				}
 
-				err := t.Execute()
+				err := t.ExecuteFuncs()
 				if (err != nil) != tt.wantErr {
 					t1.Errorf("Execute() error = %v, wantErr %v", err, tt.wantErr)
 				}
@@ -204,8 +204,8 @@ func TestTx_Execute(t1 *testing.T) {
 
 func TestTx_ExecuteFunc(t1 *testing.T) {
 	type fields struct {
-		txFuncs        []TxFunc
-		rollbackFuncs  []RollbackFunc
+		txFuncs        []UpdateFunc
+		rollbackFuncs  []CompensateFunc
 		async          bool
 		completedCount int
 		completedErr   error
@@ -213,15 +213,15 @@ func TestTx_ExecuteFunc(t1 *testing.T) {
 	tests := []struct {
 		name       string
 		fields     fields
-		appendTx   TxFunc
-		appendRB   RollbackFunc
+		appendTx   UpdateFunc
+		appendRB   CompensateFunc
 		wantErr    bool
 		assertions func(t *testing.T, a, b interface{}, c ...interface{}) bool
 	}{
 		{
 			name: "happypath",
 			fields: fields{
-				txFuncs: []TxFunc{
+				txFuncs: []UpdateFunc{
 					func() error {
 						a += 2
 						fmt.Println("a =", a)
@@ -233,7 +233,7 @@ func TestTx_ExecuteFunc(t1 *testing.T) {
 						return nil
 					},
 				},
-				rollbackFuncs: []RollbackFunc{
+				rollbackFuncs: []CompensateFunc{
 					func() error {
 						a = 4
 						fmt.Println("ROLLBACK A")
@@ -268,7 +268,7 @@ func TestTx_ExecuteFunc(t1 *testing.T) {
 		{
 			name: "error-mid",
 			fields: fields{
-				txFuncs: []TxFunc{
+				txFuncs: []UpdateFunc{
 					func() error {
 						a += 2
 						return nil
@@ -278,7 +278,7 @@ func TestTx_ExecuteFunc(t1 *testing.T) {
 						return nil
 					},
 				},
-				rollbackFuncs: []RollbackFunc{
+				rollbackFuncs: []CompensateFunc{
 					func() error {
 						a = 4
 						return nil
@@ -311,7 +311,7 @@ func TestTx_ExecuteFunc(t1 *testing.T) {
 	for _, tt := range tests {
 		t1.Run(
 			tt.name, func(t1 *testing.T) {
-				t := &Tx{
+				t := &SagaTx{
 					async:          tt.fields.async,
 					lock:           sync.Mutex{},
 					completedCount: tt.fields.completedCount,
@@ -323,7 +323,7 @@ func TestTx_ExecuteFunc(t1 *testing.T) {
 					t.AppendFunc(txFunc, tt.fields.rollbackFuncs[i])
 				}
 
-				if err := t.Execute(); err != nil {
+				if err := t.ExecuteFuncs(); err != nil {
 					t1.Error(err)
 					t1.Fail()
 				}
@@ -345,8 +345,8 @@ func TestTx_ExecuteFunc(t1 *testing.T) {
 func TestTx_ExecuteRetry(t1 *testing.T) {
 	wg := sync.WaitGroup{}
 	type fields struct {
-		txFuncs        []TxFunc
-		rollbackFuncs  []RollbackFunc
+		txFuncs        []UpdateFunc
+		rollbackFuncs  []CompensateFunc
 		async          bool
 		completedCount int
 		completedErr   error
@@ -360,7 +360,7 @@ func TestTx_ExecuteRetry(t1 *testing.T) {
 		{
 			name: "happypath",
 			fields: fields{
-				txFuncs: []TxFunc{
+				txFuncs: []UpdateFunc{
 					func() error {
 						a += 2
 						fmt.Println("a =", a)
@@ -377,7 +377,7 @@ func TestTx_ExecuteRetry(t1 *testing.T) {
 						return nil
 					},
 				},
-				rollbackFuncs: []RollbackFunc{
+				rollbackFuncs: []CompensateFunc{
 					func() error {
 						a = 4
 						fmt.Println("ROLLBACK A")
@@ -407,7 +407,7 @@ func TestTx_ExecuteRetry(t1 *testing.T) {
 		{
 			name: "error-mid",
 			fields: fields{
-				txFuncs: []TxFunc{
+				txFuncs: []UpdateFunc{
 					func() error {
 						a += 2
 						return nil
@@ -422,7 +422,7 @@ func TestTx_ExecuteRetry(t1 *testing.T) {
 						return nil
 					},
 				},
-				rollbackFuncs: []RollbackFunc{
+				rollbackFuncs: []CompensateFunc{
 					func() error {
 						a = 4
 						return nil
@@ -450,7 +450,7 @@ func TestTx_ExecuteRetry(t1 *testing.T) {
 		{
 			name: "happypath-async",
 			fields: fields{
-				txFuncs: []TxFunc{
+				txFuncs: []UpdateFunc{
 					func() error {
 						a += 2
 						fmt.Println("a =", a)
@@ -470,7 +470,7 @@ func TestTx_ExecuteRetry(t1 *testing.T) {
 						return nil
 					},
 				},
-				rollbackFuncs: []RollbackFunc{
+				rollbackFuncs: []CompensateFunc{
 					func() error {
 						a = 4
 						fmt.Println("ROLLBACK A")
@@ -502,7 +502,7 @@ func TestTx_ExecuteRetry(t1 *testing.T) {
 	for _, tt := range tests {
 		t1.Run(
 			tt.name, func(t1 *testing.T) {
-				t := &Tx{
+				t := &SagaTx{
 					async:          tt.fields.async,
 					lock:           sync.Mutex{},
 					completedCount: tt.fields.completedCount,
@@ -527,7 +527,7 @@ func TestTx_ExecuteRetry(t1 *testing.T) {
 					t.AppendFunc(txFunc, tt.fields.rollbackFuncs[i])
 				}
 
-				err := t.Execute()
+				err := t.ExecuteFuncs()
 				if (err != nil) != tt.wantErr {
 					t1.Errorf("Execute() error = %v, wantErr %v", err, tt.wantErr)
 				}
@@ -542,8 +542,8 @@ func TestTx_ExecuteRetry(t1 *testing.T) {
 
 func TestTx_ExecuteFuncRetry(t1 *testing.T) {
 	type fields struct {
-		txFuncs        []TxFunc
-		rollbackFuncs  []RollbackFunc
+		txFuncs        []UpdateFunc
+		rollbackFuncs  []CompensateFunc
 		async          bool
 		completedCount int
 		completedErr   error
@@ -551,15 +551,15 @@ func TestTx_ExecuteFuncRetry(t1 *testing.T) {
 	tests := []struct {
 		name       string
 		fields     fields
-		appendTx   TxFunc
-		appendRB   RollbackFunc
+		appendTx   UpdateFunc
+		appendRB   CompensateFunc
 		wantErr    bool
 		assertions func(t *testing.T, a, b interface{}, c ...interface{}) bool
 	}{
 		{
 			name: "happypath",
 			fields: fields{
-				txFuncs: []TxFunc{
+				txFuncs: []UpdateFunc{
 					func() error {
 						a += 2
 						fmt.Println("a =", a)
@@ -571,7 +571,7 @@ func TestTx_ExecuteFuncRetry(t1 *testing.T) {
 						return nil
 					},
 				},
-				rollbackFuncs: []RollbackFunc{
+				rollbackFuncs: []CompensateFunc{
 					func() error {
 						a = 4
 						fmt.Println("ROLLBACK A")
@@ -606,7 +606,7 @@ func TestTx_ExecuteFuncRetry(t1 *testing.T) {
 		{
 			name: "error-mid",
 			fields: fields{
-				txFuncs: []TxFunc{
+				txFuncs: []UpdateFunc{
 					func() error {
 						a += 2
 						return nil
@@ -616,7 +616,7 @@ func TestTx_ExecuteFuncRetry(t1 *testing.T) {
 						return nil
 					},
 				},
-				rollbackFuncs: []RollbackFunc{
+				rollbackFuncs: []CompensateFunc{
 					func() error {
 						a = 4
 						return nil
@@ -649,7 +649,7 @@ func TestTx_ExecuteFuncRetry(t1 *testing.T) {
 	for _, tt := range tests {
 		t1.Run(
 			tt.name, func(t1 *testing.T) {
-				t := &Tx{
+				t := &SagaTx{
 					async:          tt.fields.async,
 					lock:           sync.Mutex{},
 					completedCount: tt.fields.completedCount,
@@ -671,7 +671,7 @@ func TestTx_ExecuteFuncRetry(t1 *testing.T) {
 					t.AppendFunc(txFunc, tt.fields.rollbackFuncs[i])
 				}
 
-				if err := t.Execute(); err != nil {
+				if err := t.ExecuteFuncs(); err != nil {
 					t1.Error(err)
 					t1.Fail()
 				}
