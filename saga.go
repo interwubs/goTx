@@ -14,7 +14,7 @@ type (
 
 type Transactor interface {
 	Append(txFunc UpdateFunc, rollbackFunc CompensateFunc)
-	Execute(txFunc UpdateFunc, rollbackFunc CompensateFunc) error
+	Do(txFunc UpdateFunc, rollbackFunc CompensateFunc) error
 	ExecuteAll() error
 }
 
@@ -32,7 +32,7 @@ type SagaTx struct {
 	errs           error
 }
 
-func NewTx(async bool) *SagaTx {
+func NewSagaTx(async bool) *SagaTx {
 	return &SagaTx{
 		txFuncs:       make([]UpdateFunc, 0),
 		rollbackFuncs: make([]CompensateFunc, 0),
@@ -59,12 +59,12 @@ func (t *SagaTx) AppendUnrecoverableErrors(errs ...error) {
 	t.UnrecoverableErrors = errs
 }
 
-func (t *SagaTx) AppendFunc(txFunc UpdateFunc, rollbackFunc CompensateFunc) {
+func (t *SagaTx) Append(txFunc UpdateFunc, rollbackFunc CompensateFunc) {
 	t.txFuncs = append(t.txFuncs, txFunc)
 	t.rollbackFuncs = append(t.rollbackFuncs, rollbackFunc)
 }
 
-func (t *SagaTx) ExecuteFunc(txFunc UpdateFunc, rollbackFunc CompensateFunc) error {
+func (t *SagaTx) Do(txFunc UpdateFunc, rollbackFunc CompensateFunc) error {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
@@ -78,7 +78,7 @@ func (t *SagaTx) ExecuteFunc(txFunc UpdateFunc, rollbackFunc CompensateFunc) err
 	}
 
 	if err != nil {
-		t.AppendFunc(func() error { return nil }, rollbackFunc)
+		t.Append(func() error { return nil }, rollbackFunc)
 	}
 	t.handleCompletion(err)
 	if t.completedErr != nil {
@@ -88,7 +88,7 @@ func (t *SagaTx) ExecuteFunc(txFunc UpdateFunc, rollbackFunc CompensateFunc) err
 	return nil
 }
 
-func (t *SagaTx) ExecuteFuncs() error {
+func (t *SagaTx) ExecuteAll() error {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 

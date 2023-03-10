@@ -9,7 +9,7 @@ import (
 
 type Operator interface {
 	Append(op *ChainOperation)
-	Execute(op *ChainOperation) error
+	Do(op *ChainOperation) error
 	ExecuteAll() error
 }
 
@@ -56,7 +56,7 @@ func (t *Chain) Append(operation *ChainOperation) {
 	t.ops = append(t.ops, operation)
 }
 
-func (t *Chain) Execute(operation *ChainOperation) error {
+func (t *Chain) Do(operation *ChainOperation) error {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 

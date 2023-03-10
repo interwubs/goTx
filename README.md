@@ -22,9 +22,9 @@ import (
 )
 
 func main() {
-	tx := aonTx.NewTx(false)
+	tx := aonTx.NewSagaTx(false)
 
-	tx.AddFunc(
+	tx.Append(
 		func() error {
 			fmt.Println("Executing function 1")
 			return nil
@@ -34,7 +34,7 @@ func main() {
 		},
 	)
 
-	tx.AddFunc(
+	tx.Append(
 		func() error {
 			fmt.Println("Executing function 2")
 			return fmt.Errorf("error in function 2")
@@ -44,7 +44,7 @@ func main() {
 		},
 	)
 
-	tx.AddFunc(
+	tx.Append(
 		func() error {
 			fmt.Println("Executing function 3")
 			return nil
@@ -54,7 +54,7 @@ func main() {
 		},
 	)
 
-	if err := tx.Execute(); err != nil {
+	if err := tx.ExecuteAll(); err != nil {
 		fmt.Printf("Transaction failed: %v\n", err)
 	} else {
 		fmt.Println("Transaction succeeded")
