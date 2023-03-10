@@ -1,4 +1,4 @@
-module github.com/interwubs/aonTx
+module github.com/interwubs/goTx
 
 go 1.18
 
